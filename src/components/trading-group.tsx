@@ -8,6 +8,7 @@ import db from "@/lib/db";
 const TradingGroup = () => {
   const [pairsData, setPairsData] = useState<PairsResponse | null>(null);
   const [isFirstLoad, setIsFirstLoad] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const wallets = useLiveQuery(() => db.wallets.toArray());
 
@@ -26,6 +27,7 @@ const TradingGroup = () => {
 
   useEffect(() => {
     if (!openTrades?.length) {
+      setIsFirstLoad(false);
       return;
     }
 
@@ -35,8 +37,11 @@ const TradingGroup = () => {
       try {
         const response = await getPairsData(pairs);
         setPairsData(response);
+        setError(null);
       } catch (e) {
-        console.error(e);
+        if (e instanceof Error) {
+          setError(e.message);
+        }
       } finally {
         if(isFirstLoad) {
           setIsFirstLoad(false);
@@ -46,11 +51,11 @@ const TradingGroup = () => {
     return () => clearInterval(interval);
   }, [openTrades, isFirstLoad]);
 
-  if(isFirstLoad) {
+  if(isFirstLoad || error) {
     return (
       <div className="w-full h-full flex items-center justify-center">
         <div className="flex gap-2 flex-col items-center">
-          <span>Loading...</span>
+          <span>{error ? error : 'Loading...'}</span>
         </div>
       </div>
     )
