@@ -128,28 +128,34 @@ export default function TokenBalance() {
     }
   }, []);
 
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<{
+    id: string,
+    interval: NodeJS.Timeout
+  } | null>(null);
 
   useEffect(() => {
     if(!pair?.pairAddress) {
       return;
     }
 
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
+    if (intervalRef.current && intervalRef.current.id !== pair.pairAddress) {
+      clearInterval(intervalRef.current.interval);
     }
 
-    intervalRef.current = setInterval(async () => {
-      const response = await getPairsData([pair.pairAddress]);
-      if (!response?.pairs?.length) {
-        return;
-      }
-      setPair(response.pairs[0]);
-    }, RESET_PAIR_INTERVAL);
+    intervalRef.current = {
+      id: pair.pairAddress,
+      interval: setInterval(async () => {
+        const response = await getPairsData([pair.pairAddress]);
+        if (!response?.pairs?.length) {
+          return;
+        }
+        setPair(response.pairs[0]);
+      }, RESET_PAIR_INTERVAL)
+    }
 
     return () => {
       if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+        clearInterval(intervalRef.current.interval);
       }
     };
   }, [pair?.pairAddress]);
@@ -195,46 +201,144 @@ export default function TokenBalance() {
   );
 
   const handleBuy = async () => {
-    if (
-      !pair?.baseToken.address ||
-      !tokenDecimals.current ||
-      !settings ||
-      !selectedWallet
-    ) {
-      return;
-    }
-    const { outputAmount } = await caculateSwap(
-      {
-        address: TokenInfo.SOL.mintAddress,
-        decimal: TokenInfo.SOL.decimals,
-      },
-      {
-        address: pair.baseToken.address,
-        decimal: tokenDecimals.current,
-      },
-      {
-        amount: buyAmount,
-        slippage: settings.slippage,
+    try {
+      if (
+        !pair?.baseToken.address ||
+        !tokenDecimals.current ||
+        !settings ||
+        !selectedWallet
+      ) {
+        return;
       }
-    );
+      const { outputAmount } = await caculateSwap(
+        {
+          address: TokenInfo.SOL.mintAddress,
+          decimal: TokenInfo.SOL.decimals,
+        },
+        {
+          address: pair.baseToken.address,
+          decimal: tokenDecimals.current,
+        },
+        {
+          amount: buyAmount,
+          slippage: settings.slippage,
+        }
+      );
+  
+      const newBalanceQuantity = currentTrade?.balanceQuantity
+        ? currentTrade.balanceQuantity + outputAmount
+        : outputAmount;
+  
+      const transaction: Transaction = {
+        quantity: outputAmount,
+        priceSOL: buyAmount / outputAmount,
+        totalSOL: buyAmount,
+        balanceQuantity: newBalanceQuantity,
+        marketCap: pair.fdv,
+        type: "buy",
+        createdAt: new Date().toISOString(),
+      };
+  
+      if (currentTrade) {
+        await db.wallets.update(selectedWallet.address, {
+          balanceSOL: selectedWallet.balanceSOL - buyAmount,
+          trades: [
+            ...selectedWallet.trades.filter(
+              (trade) => trade.id !== currentTrade.id
+            ),
+            {
+              ...currentTrade,
+              balanceQuantity: newBalanceQuantity,
+              transactions: [...currentTrade.transactions, transaction],
+              updatedAt: new Date().toISOString(),
+            },
+          ],
+          updatedAt: new Date().toISOString(),
+        });
+      } else {
+        const newTrade: Trade = {
+          id: uuidv4(),
+          pairAddress: pair.pairAddress,
+          tokenAddress: pair.baseToken.address,
+          balanceQuantity: outputAmount,
+          transactions: [transaction],
+          status: "open",
+          walletAddress: selectedWallet.address,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        await db.wallets.update(selectedWallet.address, {
+          balanceSOL: selectedWallet.balanceSOL - buyAmount,
+          trades: [...selectedWallet.trades, newTrade],
+          updatedAt: new Date().toISOString(),
+        });
+      }
+  
+      toast({
+        title: "Transaction successful",
+        description: `Bought ${outputAmount.toFixed(3)} ${
+          pair.baseToken.symbol
+        } for ${buyAmount.toFixed(3)} SOL`,
+      });
+    } catch(e) {
+      if(e instanceof Error) {
+        toast({
+          title: "Transaction failed",
+          description: e.message,
+          variant: "destructive"
+        });
+      }
+    }
+  };
 
-    const newBalanceQuantity = currentTrade?.balanceQuantity
-      ? currentTrade.balanceQuantity + outputAmount
-      : outputAmount;
-
-    const transaction: Transaction = {
-      quantity: outputAmount,
-      priceSOL: buyAmount / outputAmount,
-      totalSOL: buyAmount,
-      balanceQuantity: newBalanceQuantity,
-      marketCap: pair.fdv,
-      type: "buy",
-      createdAt: new Date().toISOString(),
-    };
-
-    if (currentTrade) {
+  const handleSell = async () => {
+    try {
+      if (
+        !pair?.baseToken.address ||
+        !settings ||
+        !selectedWallet ||
+        !tokenDecimals.current ||
+        !currentTrade
+      ) {
+        return;
+      }
+  
+      if (currentTrade.balanceQuantity <= 0) {
+        return;
+      }
+  
+      const sellAmount =
+        currentTrade.balanceQuantity * (sellAmountPercentage / 100);
+  
+      const { outputAmount } = await caculateSwap(
+        {
+          address: pair.baseToken.address,
+          decimal: tokenDecimals.current,
+        },
+        {
+          address: TokenInfo.SOL.mintAddress,
+          decimal: TokenInfo.SOL.decimals,
+        },
+        {
+          amount: sellAmount,
+          slippage: settings.slippage,
+        }
+      );
+  
+      const newBalanceQuantity = currentTrade.balanceQuantity - sellAmount;
+  
+      const transaction: Transaction = {
+        quantity: sellAmount,
+        priceSOL: outputAmount / sellAmount,
+        totalSOL: outputAmount,
+        balanceQuantity: newBalanceQuantity,
+        marketCap: pair.fdv,
+        type: "sell",
+        createdAt: new Date().toISOString(),
+      };
+  
       await db.wallets.update(selectedWallet.address, {
-        balanceSOL: selectedWallet.balanceSOL - buyAmount,
+        balanceSOL: selectedWallet.balanceSOL + outputAmount,
         trades: [
           ...selectedWallet.trades.filter(
             (trade) => trade.id !== currentTrade.id
@@ -242,107 +346,29 @@ export default function TokenBalance() {
           {
             ...currentTrade,
             balanceQuantity: newBalanceQuantity,
+            status: newBalanceQuantity > 0 ? "open" : "closed",
             transactions: [...currentTrade.transactions, transaction],
             updatedAt: new Date().toISOString(),
           },
         ],
         updatedAt: new Date().toISOString(),
       });
-    } else {
-      const newTrade: Trade = {
-        id: uuidv4(),
-        pairAddress: pair.pairAddress,
-        tokenAddress: pair.baseToken.address,
-        balanceQuantity: outputAmount,
-        transactions: [transaction],
-        status: "open",
-        walletAddress: selectedWallet.address,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      await db.wallets.update(selectedWallet.address, {
-        balanceSOL: selectedWallet.balanceSOL - buyAmount,
-        trades: [...selectedWallet.trades, newTrade],
-        updatedAt: new Date().toISOString(),
+  
+      toast({
+        title: "Transaction successful",
+        description: `Sold ${sellAmount.toFixed(3)} ${
+          pair.baseToken.symbol
+        } for ${outputAmount.toFixed(3)} SOL`,
       });
-    }
-
-    toast({
-      title: "Transaction successful",
-      description: `Bought ${outputAmount.toFixed(3)} ${
-        pair.baseToken.symbol
-      } for ${buyAmount.toFixed(3)} SOL`,
-    });
-  };
-
-  const handleSell = async () => {
-    if (
-      !pair?.baseToken.address ||
-      !settings ||
-      !selectedWallet ||
-      !tokenDecimals.current ||
-      !currentTrade
-    ) {
-      return;
-    }
-
-    if (currentTrade.balanceQuantity <= 0) {
-      return;
-    }
-
-    const sellAmount =
-      currentTrade.balanceQuantity * (sellAmountPercentage / 100);
-
-    const { outputAmount } = await caculateSwap(
-      {
-        address: pair.baseToken.address,
-        decimal: tokenDecimals.current,
-      },
-      {
-        address: TokenInfo.SOL.mintAddress,
-        decimal: TokenInfo.SOL.decimals,
-      },
-      {
-        amount: sellAmount,
-        slippage: settings.slippage,
+    } catch(e) {
+      if(e instanceof Error) {
+        toast({
+          title: "Transaction failed",
+          description: e.message,
+          variant: "destructive"
+        });
       }
-    );
-
-    const newBalanceQuantity = currentTrade.balanceQuantity - sellAmount;
-
-    const transaction: Transaction = {
-      quantity: sellAmount,
-      priceSOL: outputAmount / sellAmount,
-      totalSOL: outputAmount,
-      balanceQuantity: newBalanceQuantity,
-      marketCap: pair.fdv,
-      type: "sell",
-      createdAt: new Date().toISOString(),
-    };
-
-    await db.wallets.update(selectedWallet.address, {
-      balanceSOL: selectedWallet.balanceSOL + outputAmount,
-      trades: [
-        ...selectedWallet.trades.filter(
-          (trade) => trade.id !== currentTrade.id
-        ),
-        {
-          ...currentTrade,
-          balanceQuantity: newBalanceQuantity,
-          status: newBalanceQuantity > 0 ? "open" : "closed",
-          transactions: [...currentTrade.transactions, transaction],
-          updatedAt: new Date().toISOString(),
-        },
-      ],
-      updatedAt: new Date().toISOString(),
-    });
-
-    toast({
-      title: "Transaction successful",
-      description: `Sold ${sellAmount.toFixed(3)} ${
-        pair.baseToken.symbol
-      } for ${outputAmount.toFixed(3)} SOL`,
-    });
+    }
   };
 
   const shouldShowTrade =

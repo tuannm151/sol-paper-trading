@@ -69,8 +69,6 @@ const Settings = () => {
     });
   }, [buysAmounts, sellAmountPercentages, settings, toast]) as () => Promise<void>;
 
-  console.log(wallets);
-
   return (
     <div className="p-12 w-full h-full">
         <Tabs defaultValue="general" className="w-full h-full">

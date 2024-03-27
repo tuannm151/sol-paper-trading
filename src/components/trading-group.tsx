@@ -17,17 +17,20 @@ const TradingGroup = () => {
       return [];
     }
 
-    return wallets.reduce((acc, wallet) => {
+    const result = wallets.reduce((acc, wallet) => {
       const walletOpenTrades = wallet.trades.filter(
         (trade) => trade.status === "open" && trade.balanceQuantity > 0
       );
       return acc.concat(walletOpenTrades);
     }, [] as Trade[]);
+    if(!result.length) {
+      setIsFirstLoad(false);
+    }
+    return result;
   }, [wallets]);
 
   useEffect(() => {
     if (!openTrades?.length) {
-      setIsFirstLoad(false);
       return;
     }
 
@@ -43,13 +46,11 @@ const TradingGroup = () => {
           setError(e.message);
         }
       } finally {
-        if(isFirstLoad) {
-          setIsFirstLoad(false);
-        }
+        setIsFirstLoad(false);
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [openTrades, isFirstLoad]);
+  }, [openTrades]);
 
   if(isFirstLoad || error) {
     return (

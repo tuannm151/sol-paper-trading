@@ -16,8 +16,6 @@ const AddWallet = () => {
   const [open, setOpen] = useState(false);
   
   const handleSubmit = async () => {
-    console.log('name', name);
-
     if(!name?.trim().length) {
       toast({
         title: "Name is required",

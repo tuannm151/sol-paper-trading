@@ -51,8 +51,24 @@ const caculateSwap = async (
   const amountIn = Math.floor(amount * (10 ** from.decimal));
   const slippageBps = slippage * 100;
 
-  const response = await axios.get(`https://quote-api.jup.ag/v6/quote?inputMint=${from.address}&outputMint=${to.address}&amount=${amountIn}&slippageBps=${slippageBps}`);
-  const outputAmount = Number(response.data.outAmount) / (10 ** to.decimal);
+  let outputAmount : number | null;
+
+  try {
+    const response = await axios.get(`https://quote-api.jup.ag/v6/quote?inputMint=${from.address}&outputMint=${to.address}&amount=${amountIn}&slippageBps=${slippageBps}`);
+    outputAmount = Number(response.data.outAmount) / (10 ** to.decimal);
+  } catch (e) {
+    const response = await axios.get(`https://public-api.birdeye.so/public/multi_price?list_address=${from.address},${to.address}`, {
+      headers: {
+        'X-API-KEY': '4e0b5612964b450689e1dff26e73405b'
+      }
+    });
+
+    const { data } = response.data;
+    const fromPrice = data[from.address].value;
+    const toPrice = data[to.address].value;
+
+    outputAmount = (amount * fromPrice) / toPrice;
+  }
 
   return {
     outputAmount
