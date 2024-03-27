@@ -32,10 +32,15 @@ const TradingGroup = () => {
     const pairs = [...new Set(openTrades.map((trade) => trade.pairAddress))];
 
     const interval = setInterval(async () => {
-      const response = await getPairsData(pairs);
-      setPairsData(response);
-      if (isFirstLoad) {
-        setIsFirstLoad(false);
+      try {
+        const response = await getPairsData(pairs);
+        setPairsData(response);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        if(isFirstLoad) {
+          setIsFirstLoad(false);
+        }
       }
     }, 1000);
     return () => clearInterval(interval);
