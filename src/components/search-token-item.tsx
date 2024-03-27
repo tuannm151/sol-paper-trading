@@ -35,12 +35,12 @@ const SearchTokenItem = ({ pair, onClick }: Props) => {
                     <span>{formatCurrency(pair?.liquidity?.usd ?? pair?.liquidity?.base)}</span>
                 </div>
                 <div className="flex gap-1">
-                    <span className="text-gray-400">24h Volume:</span>
-                    <span>{formatCurrency(pair.volume.h24)}</span>
+                    <span className="text-gray-400">Market cap:</span>
+                    <span>{formatCurrency(pair.fdv)}</span>
                 </div>
                 <div className="flex gap-1">
-                    <span className="text-gray-400">Age:</span>
-                    <span>{pair.pairCreatedAt ? DateTime.fromMillis(pair.pairCreatedAt).toRelative() : 'NA'}</span>
+                    <span className="text-gray-400">24h Volume:</span>
+                    <span>{formatCurrency(pair.volume.h24)}</span>
                 </div>
             </div>
             <div className="flex gap-4">
@@ -51,6 +51,10 @@ const SearchTokenItem = ({ pair, onClick }: Props) => {
                 <div className="flex gap-1">
                     <span className="text-gray-400">CA:</span>
                     <span>{formatShortAddress(pair.baseToken.address)}</span>
+                </div>
+                <div className="flex gap-1">
+                    <span className="text-gray-400">Age:</span>
+                    <span>{pair.pairCreatedAt ? DateTime.fromMillis(pair.pairCreatedAt).toRelative() : 'NA'}</span>
                 </div>
             </div>
         </div>
